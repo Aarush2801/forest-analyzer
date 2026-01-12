@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Deforestation Analyzer</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 20px; }
+    #map { height: 520px; border-radius: 12px; overflow: hidden; }
+    .row { display: flex; gap: 16px; align-items: end; flex-wrap: wrap; margin: 12px 0; }
+    input, select { padding: 8px; width: 240px; }
+    button { padding: 10px 14px; cursor: pointer; }
+    .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #f2f2f2; }
+    .err { background:#ffe5e5; padding:10px; border-radius:10px; margin:10px 0; }
+    .muted { color: #555; font-size: 13px; max-width: 980px; }
+
+   
+    #loadingOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    #loadingBox {
+      background: white;
+      padding: 18px 20px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      min-width: 280px;
+    }
+    .spinner {
+      width: 22px;
+      height: 22px;
+      border: 3px solid #ddd;
+      border-top-color: #333;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    
+    .legend {
+      font-size: 14px;
+      background: white;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      line-height: 18px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Deforestation Analyzer</h1>
+
+  {% if error %}
+    <div class="err"><b>Error:</b> {{ error }}</div>
+  {% endif %}
+
+  <div class="row">
+    <div>
+      <div><b>Before year</b></div>
+      <input type="number" id="year_before" value="{{ year_before }}" />
+    </div>
+
+    <div>
+      <div><b>After year</b></div>
+      <input type="number" id="year_after" value="{{ year_after }}" />
+    </div>
+
+    <div>
+      <div><b>Season (speed)</b></div>
+      <select id="season">
+        <option value="jun-sep" {% if season == "jun-sep" %}selected{% endif %}>Jun–Sep (fast)</option>
+        <option value="all" {% if season == "all" %}selected{% endif %}>All year (slower)</option>
+      </select>
+    </div>
+
+    <div>
+      <div><b>Bounding box</b></div>
+      <input type="text" id="bbox_display" value="{{ bbox }}" readonly />
+    </div>
+
+    <form method="post" id="analyzeForm">
+      <input type="hidden" name="bbox" id="bbox" value="{{ bbox }}" />
+      <input type="hidden" name="year_before" id="yb_hidden" value="{{ year_before }}" />
+      <input type="hidden" name="year_after" id="ya_hidden" value="{{ year_after }}" />
+      <input type="hidden" name="season" id="season_hidden" value="{{ season }}" />
+      <button type="submit" id="analyzeBtn">Analyze</button>
+    </form>
+  </div>
+
+  {% if metrics %}
+    <div class="row">
+      <span class="pill"><b>Forest before:</b> {{ "%.2f"|format(metrics.forest_before_km2) }} km²</span>
+      <span class="pill"><b>Forest after:</b> {{ "%.2f"|format(metrics.forest_after_km2) }} km²</span>
+      <span class="pill"><b>Loss:</b> {{ "%.2f"|format(metrics.loss_km2) }} km²</span>
+      {% if metrics.loss_percent is not none %}
+        <span class="pill"><b>Loss %:</b> {{ "%.2f"|format(metrics.loss_percent) }}%</span>
+      {% else %}
+        <span class="pill"><b>Loss %:</b> N/A</span>
+      {% endif %}
+      <span class="pill"><b>Scale:</b> {{ metrics.used_scale }} m</span>
+    </div>
+  {% endif %}
+
+  <p class="muted">
+    <b>Notes:</b> NDVI is a vegetation proxy. Results can be affected by seasonality, clouds, land cover type,
+    and the chosen years. Smaller rectangles are faster and usually more reliable.
+  </p>
+
+  <div id="map"></div>
+
+  
+  <div id="loadingOverlay">
+    <div id="loadingBox">
+      <div class="spinner"></div>
+      <div>
+        <div><b>Sorry it takes a little time :)…</b></div>
+        <div class="muted">This can take a few seconds.</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+<script>
+(() => {
+  
+  const center = {{ center | tojson }};
+
+  const map = L.map("map").setView([center.lat, center.lon], center.zoom);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap"
+  }).addTo(map);
+
+  
+  const overlayLayers = {};
+
+  {% if tile_urls %}
+    const ndviDiff = L.tileLayer("{{ tile_urls.diff }}", { opacity: 0.85, attribution: "Google Earth Engine" });
+    const ndviBefore = L.tileLayer("{{ tile_urls.before }}", { opacity: 0.75, attribution: "Google Earth Engine" });
+    const ndviAfter = L.tileLayer("{{ tile_urls.after }}", { opacity: 0.75, attribution: "Google Earth Engine" });
+    const lostForest = L.tileLayer("{{ tile_urls.lost }}", { opacity: 0.90, attribution: "Google Earth Engine" });
+
+    ndviDiff.addTo(map);
+
+    overlayLayers["Change (After - Before)"] = ndviDiff;
+    overlayLayers["Before ({{ year_before }})"] = ndviBefore;
+    overlayLayers["After ({{ year_after }})"] = ndviAfter;
+    overlayLayers["Lost Forest (mask)"] = lostForest;
+
+    L.control.layers(null, overlayLayers, { collapsed: false }).addTo(map);
+  {% endif %}
+
+  // Draw rectangle support
+  const drawnItems = new L.FeatureGroup();
+  map.addLayer(drawnItems);
+
+  const drawControl = new L.Control.Draw({
+    draw: {
+      polygon: false, polyline: false, circle: false,
+      marker: false, circlemarker: false,
+      rectangle: { shapeOptions: { weight: 2 } }
+    },
+    edit: { featureGroup: drawnItems, edit: true, remove: true }
+  });
+  map.addControl(drawControl);
+
+  function setBBoxFromBounds(bounds) {
+    const west = bounds.getWest().toFixed(6);
+    const south = bounds.getSouth().toFixed(6);
+    const east = bounds.getEast().toFixed(6);
+    const north = bounds.getNorth().toFixed(6);
+    const bboxStr = `${west},${south},${east},${north}`;
+    document.getElementById("bbox").value = bboxStr;
+    document.getElementById("bbox_display").value = bboxStr;
+  }
+
+  
+  const initialBBox = "{{ bbox }}";
+  if (initialBBox && initialBBox.includes(",")) {
+    const parts = initialBBox.split(",").map(Number);
+    if (parts.length === 4 && parts.every(Number.isFinite)) {
+      const [minLon, minLat, maxLon, maxLat] = parts;
+      const rectBounds = L.latLngBounds([minLat, minLon], [maxLat, maxLon]);
+      const rect = L.rectangle(rectBounds);
+      drawnItems.addLayer(rect);
+      map.fitBounds(rectBounds);
+      setBBoxFromBounds(rectBounds);
+    }
+  }
+
+  map.on(L.Draw.Event.CREATED, function (event) {
+    drawnItems.clearLayers();
+    const layer = event.layer;
+    drawnItems.addLayer(layer);
+    setBBoxFromBounds(layer.getBounds());
+  });
+
+  map.on(L.Draw.Event.EDITED, function (event) {
+    event.layers.eachLayer(function (layer) {
+      if (layer.getBounds) setBBoxFromBounds(layer.getBounds());
+    });
+  });
+
+  
+  function syncFormFields() {
+    document.getElementById("yb_hidden").value = document.getElementById("year_before").value;
+    document.getElementById("ya_hidden").value = document.getElementById("year_after").value;
+    document.getElementById("season_hidden").value = document.getElementById("season").value;
+  }
+  document.getElementById("year_before").addEventListener("input", syncFormFields);
+  document.getElementById("year_after").addEventListener("input", syncFormFields);
+  document.getElementById("season").addEventListener("change", syncFormFields);
+  syncFormFields();
+
+  // Loading overlay + prevent empty bbox
+  const overlay = document.getElementById("loadingOverlay");
+  document.getElementById("analyzeForm").addEventListener("submit", function (e) {
+    const bboxVal = document.getElementById("bbox").value.trim();
+    if (!bboxVal) {
+      e.preventDefault();
+      alert("Draw a rectangle on the map first (bbox is empty).");
+      return;
+    }
+    syncFormFields();
+    overlay.style.display = "flex";
+    document.getElementById("analyzeBtn").disabled = true;
+  });
+
+  
+  const legend = L.control({ position: "bottomright" });
+  legend.onAdd = function () {
+    const div = L.DomUtil.create("div", "legend");
+    div.innerHTML = `
+      <div style="font-weight:700;margin-bottom:6px;">NDVI Change</div>
+      <div><span style="display:inline-block;width:14px;height:14px;background:red;margin-right:6px;"></span> Vegetation loss</div>
+      <div><span style="display:inline-block;width:14px;height:14px;background:white;border:1px solid #ccc;margin-right:6px;"></span> No change</div>
+      <div><span style="display:inline-block;width:14px;height:14px;background:green;margin-right:6px;"></span> Vegetation gain</div>
+    `;
+    return div;
+  };
+  legend.addTo(map);
+})();
+</script>
+
+</body>
+</html>

@@ -29,9 +29,9 @@
 
     body {
       font-family: 'Nunito', system-ui, sans-serif;
-      margin: 0;
-      padding: 24px 28px;
-      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 48px;
+      max-width: 1400px;
       background: var(--bg);
       color: var(--text);
     }
@@ -44,7 +44,7 @@
       letter-spacing: -0.3px;
     }
 
-    #map { height: 520px; border-radius: 16px; overflow: hidden; border: 2px solid var(--border); }
+    #map { height: 520px; border-radius: 0; overflow: hidden; border: 2px solid var(--border); }
 
     .row { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; margin: 14px 0; }
 
@@ -54,7 +54,7 @@
       padding: 9px 12px;
       width: 200px;
       border: 2px solid var(--border);
-      border-radius: 10px;
+      border-radius: 0;
       background: var(--card);
       font-family: inherit;
       font-size: 14px;
@@ -68,23 +68,22 @@
       padding: 10px 20px;
       cursor: pointer;
       border: none;
-      border-radius: 10px;
+      border-radius: 0;
       background: var(--green);
       color: white;
       font-family: inherit;
       font-size: 15px;
       font-weight: 700;
-      transition: background 0.15s, transform 0.1s;
+      transition: background 0.15s;
     }
     button#analyzeBtn:hover { background: #245c43; }
-    button#analyzeBtn:active { transform: scale(0.97); }
     button#analyzeBtn:disabled { background: #aaa; cursor: not-allowed; }
 
     .btn {
       padding: 10px 16px;
       cursor: pointer;
       border: 2px solid var(--border);
-      border-radius: 10px;
+      border-radius: 0;
       background: var(--card);
       color: var(--green);
       font-family: inherit;
@@ -99,7 +98,7 @@
     .pill {
       display: inline-block;
       padding: 7px 14px;
-      border-radius: 999px;
+      border-radius: 0;
       background: var(--green-light);
       color: var(--green);
       font-size: 14px;
@@ -112,7 +111,7 @@
       background: var(--red-light);
       color: var(--red);
       padding: 12px 16px;
-      border-radius: 12px;
+      border-radius: 0;
       margin: 10px 0;
       font-weight: 600;
       border: 1.5px solid #f5c6c2;
@@ -123,7 +122,7 @@
     .badge {
       display: inline-block;
       padding: 4px 10px;
-      border-radius: 6px;
+      border-radius: 0;
       font-size: 12px;
       font-weight: 700;
       background: var(--green-light);
@@ -139,7 +138,7 @@
       gap: 12px;
       background: var(--card);
       padding: 14px 18px;
-      border-radius: 14px;
+      border-radius: 0;
       border: 2px solid var(--border);
       margin: 8px 0;
     }
@@ -159,7 +158,7 @@
     #loadingBox {
       background: var(--card);
       padding: 24px 28px;
-      border-radius: 18px;
+      border-radius: 0;
       box-shadow: 0 12px 40px rgba(0,0,0,0.2);
       min-width: 300px;
       border: 2px solid var(--border);
@@ -188,7 +187,7 @@
       font-weight: 600;
       background: white;
       padding: 10px 14px;
-      border-radius: 12px;
+      border-radius: 0;
       box-shadow: 0 2px 10px rgba(0,0,0,0.12);
       line-height: 22px;
     }
@@ -198,15 +197,98 @@
       margin-top: 20px;
       padding: 18px 22px;
       background: var(--card);
-      border-radius: 16px;
+      border-radius: 0;
       border: 2px solid var(--border);
     }
     #chartContainer h3 { margin: 0 0 14px; font-size: 16px; font-weight: 800; color: var(--green); }
+
+    /* CO2 impact card */
+    .co2-card {
+      background: var(--card);
+      border: 2px solid var(--border);
+      padding: 16px 20px;
+      margin: 10px 0;
+    }
+    .co2-title {
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--green);
+      margin-bottom: 12px;
+    }
+    .co2-grid {
+      display: flex;
+      gap: 0;
+      flex-wrap: wrap;
+    }
+    .co2-stat {
+      flex: 1;
+      min-width: 140px;
+      padding: 10px 16px;
+      border-left: 3px solid var(--green-mid);
+      margin-right: 20px;
+      margin-bottom: 8px;
+    }
+    .co2-number {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--green);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .co2-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+    .co2-note { font-size: 11px; color: var(--muted); margin-top: 8px; }
+
+    /* Two-column layout */
+    .page-layout { display: flex; gap: 20px; align-items: flex-start; margin-top: 4px; }
+    .main-col { flex: 1; min-width: 0; }
+    .news-col { width: 300px; flex-shrink: 0; }
+
+    /* News sidebar */
+    .news-header {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--green);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 10px 14px;
+      background: var(--green-light);
+      border: 2px solid var(--border);
+      border-bottom: none;
+    }
+    .news-item {
+      padding: 12px 14px;
+      border: 2px solid var(--border);
+      border-top: none;
+      background: var(--card);
+    }
+    .news-item + .news-item { border-top: none; }
+    .news-source {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: var(--green-mid);
+      margin-bottom: 4px;
+    }
+    .news-title {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      text-decoration: none;
+      line-height: 1.4;
+      margin-bottom: 5px;
+    }
+    .news-title:hover { color: var(--green); text-decoration: underline; }
+    .news-date { font-size: 11px; color: var(--muted); }
+    .news-empty { padding: 16px 14px; font-size: 13px; color: var(--muted); border: 2px solid var(--border); border-top: none; }
   </style>
 </head>
 
 <body>
-  <h1>🌳 Deforestation Analyzer</h1>
+  <h1>Deforestation Analyzer</h1>
 
   {% if error %}
     <div class="err"><b>Error:</b> {{ error }}</div>
@@ -269,6 +351,31 @@
     </div>
   {% endif %}
 
+  {% if metrics and metrics.loss_km2 > 0 %}
+    <div class="co2-card">
+      <div class="co2-title">CO&#8322; Impact Estimate</div>
+      <div class="co2-grid">
+        <div class="co2-stat">
+          <div class="co2-number">{{ "{:,.0f}".format(metrics.co2_tonnes) }}</div>
+          <div class="co2-label">tonnes of CO&#8322; released</div>
+        </div>
+        <div class="co2-stat">
+          <div class="co2-number">{{ "{:,.0f}".format(metrics.co2_cars) }}</div>
+          <div class="co2-label">cars driven for a year</div>
+        </div>
+        <div class="co2-stat">
+          <div class="co2-number">{{ "{:,.0f}".format(metrics.co2_flights) }}</div>
+          <div class="co2-label">NYC → London flights</div>
+        </div>
+        <div class="co2-stat">
+          <div class="co2-number">{{ "{:,.0f}".format(metrics.co2_homes) }}</div>
+          <div class="co2-label">homes powered for a year</div>
+        </div>
+      </div>
+      <div class="co2-note">Based on avg tropical forest density (~250 tCO&#8322;/ha). Approximate.</div>
+    </div>
+  {% endif %}
+
   {% if tile_urls %}
     <div class="opacity-grid">
       <div class="opacity-item">
@@ -295,14 +402,33 @@
     Hansen GFC uses actual tree-cover data (30% canopy threshold, 2000–2023). Smaller rectangles are faster and more reliable.
   </p>
 
-  <div id="map"></div>
+  <div class="page-layout">
+    <div class="main-col">
+      <div id="map"></div>
 
-  {% if time_series %}
-    <div id="chartContainer">
-      <h3>Mean NDVI over time ({{ time_series[0].year }}–{{ time_series[-1].year }})</h3>
-      <canvas id="ndviChart"></canvas>
+      {% if time_series %}
+        <div id="chartContainer">
+          <h3>Mean NDVI over time ({{ time_series[0].year }}–{{ time_series[-1].year }})</h3>
+          <canvas id="ndviChart"></canvas>
+        </div>
+      {% endif %}
     </div>
-  {% endif %}
+
+    <div class="news-col">
+      <div class="news-header">Sustainability News</div>
+      {% if news %}
+        {% for item in news %}
+          <div class="news-item">
+            <div class="news-source">{{ item.source }}</div>
+            <a class="news-title" href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>
+            <div class="news-date">{{ item.pub }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="news-empty">Could not load news right now.</div>
+      {% endif %}
+    </div>
+  </div>
 
   <!-- Loading overlay -->
   <div id="loadingOverlay">

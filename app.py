@@ -3,6 +3,11 @@ import shelve
 import json
 import io
 import csv
+import urllib.request
+import ssl
+import xml.etree.ElementTree as ET
+import email.utils
+from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, Response
 import ee
 
@@ -15,6 +20,51 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 CACHE_FILE = "gee_cache"
 YEAR_MIN, YEAR_MAX = 2000, 2024
 TIME_SERIES_YEARS = list(range(2017, 2025))
+
+NEWS_FEEDS = [
+    ("The Guardian",   "https://www.theguardian.com/environment/rss"),
+    ("BBC Environment","https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
+    ("Yale E360",      "https://e360.yale.edu/feed"),
+]
+_news_cache = {"items": [], "fetched_at": None}
+NEWS_TTL = timedelta(minutes=30)
+
+
+def fetch_news(max_per_feed: int = 6) -> list:
+    global _news_cache
+    now = datetime.now(timezone.utc)
+    if _news_cache["fetched_at"] and now - _news_cache["fetched_at"] < NEWS_TTL:
+        return _news_cache["items"]
+
+    items = []
+    for source, url in NEWS_FEEDS:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+                root = ET.fromstring(resp.read())
+            count = 0
+            for item in root.iter("item"):
+                if count >= max_per_feed:
+                    break
+                title = (item.findtext("title") or "").strip()
+                link  = (item.findtext("link")  or "").strip()
+                pub   = (item.findtext("pubDate") or "").strip()
+                if not title or not link:
+                    continue
+                try:
+                    pub = email.utils.parsedate_to_datetime(pub).strftime("%b %d, %Y")
+                except Exception:
+                    pub = pub[:16]
+                items.append({"title": title, "link": link, "pub": pub, "source": source})
+                count += 1
+        except Exception:
+            pass
+
+    _news_cache = {"items": items, "fetched_at": now}
+    return items
 
 
 def cache_get(key_tuple):
@@ -161,6 +211,8 @@ def compute_phase1(bbox_str: str, year_before: int, year_after: int, season: str
         )["tile_fetcher"].url_format,
     }
 
+    # CO2 impact estimate: tropical forest ~250 tCO2/ha = 25,000 tCO2/km²
+    co2_tonnes = lk * 25_000
     metrics = {
         "forest_before_km2": fb,
         "forest_after_km2": fa,
@@ -168,6 +220,10 @@ def compute_phase1(bbox_str: str, year_before: int, year_after: int, season: str
         "loss_percent": (lk / fb * 100.0) if fb > 0 else None,
         "used_scale": scale,
         "used_hansen": use_hansen,
+        "co2_tonnes": co2_tonnes,
+        "co2_cars": co2_tonnes / 4.6,          # avg car: 4.6 tCO2/year (EPA)
+        "co2_flights": co2_tonnes / 0.67,      # one-way economy NYC→London per passenger
+        "co2_homes": co2_tonnes / 7.5,         # avg US home energy: 7.5 tCO2/year
     }
 
     time_series = compute_time_series(region, scale, season)
@@ -178,7 +234,7 @@ def compute_phase1(bbox_str: str, year_before: int, year_after: int, season: str
 def index():
     default_center = {"lat": -9.25, "lon": -59.25, "zoom": 10}
     default_bbox = "-59.5,-9.5,-59.0,-9.0"
-    ctx = dict(center=default_center, metrics=None, tile_urls=None, time_series=None, error=None)
+    ctx = dict(center=default_center, metrics=None, tile_urls=None, time_series=None, error=None, news=fetch_news())
 
     if request.method == "POST":
         bbox = request.form.get("bbox", "").strip()

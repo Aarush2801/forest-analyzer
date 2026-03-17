@@ -1,15 +1,30 @@
-from flask import Flask, render_template, request
+import os
+import shelve
+import json
+import io
+import csv
+from flask import Flask, render_template, request, Response
 import ee
 
-# Earth Engine init
-
-ee.Initialize(project="studious-karma-482808-m2")
+GEE_PROJECT = os.environ.get("GEE_PROJECT", "studious-karma-482808-m2")
+ee.Initialize(project=GEE_PROJECT)
 
 app = Flask(__name__)
-app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
+CACHE_FILE = "gee_cache"
+YEAR_MIN, YEAR_MAX = 2000, 2024
+TIME_SERIES_YEARS = list(range(2017, 2025))
 
 
-CACHE = {}
+def cache_get(key_tuple):
+    with shelve.open(CACHE_FILE) as db:
+        return db.get(json.dumps(list(key_tuple)))
+
+
+def cache_set(key_tuple, value):
+    with shelve.open(CACHE_FILE) as db:
+        db[json.dumps(list(key_tuple))] = value
 
 
 def parse_bbox(bbox_str: str):
@@ -23,12 +38,7 @@ def parse_bbox(bbox_str: str):
 
 
 def choose_scale(min_lon, min_lat, max_lon, max_lat):
-    # Rough rectangle size in degrees^2 
-    width = abs(max_lon - min_lon)
-    height = abs(max_lat - min_lat)
-    area_deg2 = width * height
-
-    
+    area_deg2 = abs(max_lon - min_lon) * abs(max_lat - min_lat)
     if area_deg2 > 3.0:
         return 240
     if area_deg2 > 1.0:
@@ -39,17 +49,10 @@ def choose_scale(min_lon, min_lat, max_lon, max_lat):
 
 
 def get_ndvi(region, year: int, cloud_pct: int = 60, season: str = "jun-sep"):
-    # Fewer months -> faster
-    if season == "jun-sep":
-        start = ee.Date.fromYMD(year, 6, 1)
-        end = ee.Date.fromYMD(year, 9, 30)
-    elif season == "all":
-        start = ee.Date.fromYMD(year, 1, 1)
-        end = ee.Date.fromYMD(year, 12, 31)
+    if season == "all":
+        start, end = ee.Date.fromYMD(year, 1, 1), ee.Date.fromYMD(year, 12, 31)
     else:
-        start = ee.Date.fromYMD(year, 6, 1)
-        end = ee.Date.fromYMD(year, 9, 30)
-
+        start, end = ee.Date.fromYMD(year, 6, 1), ee.Date.fromYMD(year, 9, 30)
     img = (
         ee.ImageCollection("COPERNICUS/S2_SR")
         .filterBounds(region)
@@ -58,29 +61,61 @@ def get_ndvi(region, year: int, cloud_pct: int = 60, season: str = "jun-sep"):
         .select(["B4", "B8"])
         .median()
     )
-    return img.normalizedDifference(["B8", "B4"]) 
+    return img.normalizedDifference(["B8", "B4"])
 
 
-def area_km2(mask_img, region, scale):
-    """
-    mask_img: ee.Image of 0/1 or boolean mask (masked pixels ignored)
-    Returns area in km^2 by summing pixel area where mask is 1.
-    """
-    
-    masked = ee.Image(1).updateMask(mask_img)
-    area_img = ee.Image.pixelArea().updateMask(masked)  
+def get_forest_mask_hansen(year: int):
+    """Binary forest mask from Hansen GFC v1.11 (tree cover ≥30%, accounting for loss up to year)."""
+    hansen = ee.Image("UMD/hansen/global_forest_change_2023_v1_11")
+    forest_2000 = hansen.select("treecover2000").gt(30)
+    lossyear = hansen.select("lossyear")
+    years_since_2000 = year - 2000
+    if years_since_2000 <= 0:
+        return forest_2000
+    lost_by_year = lossyear.gt(0).And(lossyear.lte(years_since_2000))
+    return forest_2000.And(lost_by_year.Not())
 
-    stats = area_img.reduceRegion(
-        reducer=ee.Reducer.sum(),
-        geometry=region,
-        scale=scale,
-        bestEffort=True,
-        maxPixels=1e9,
-    )
-    
-    val = ee.Dictionary(stats).values().get(0)
-    m2 = ee.Number(val)
-    return m2.divide(1e6)  # km^2
+
+def area_km2_batch(masks: dict, region, scale: int) -> dict:
+    """Compute areas (km²) for multiple binary masks in one GEE round-trip."""
+    features = []
+    for name, mask in masks.items():
+        area_img = ee.Image.pixelArea().updateMask(ee.Image(1).updateMask(mask))
+        stats = area_img.reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=region,
+            scale=scale,
+            bestEffort=True,
+            maxPixels=1e9,
+        )
+        features.append(ee.Feature(None, {"name": name, "area_m2": stats.values().get(0)}))
+    info = ee.FeatureCollection(features).getInfo()
+    return {
+        f["properties"]["name"]: float(f["properties"].get("area_m2") or 0) / 1e6
+        for f in info["features"]
+    }
+
+
+def compute_time_series(region, scale: int, season: str = "jun-sep") -> list:
+    """Return mean NDVI per year for TIME_SERIES_YEARS in one GEE round-trip."""
+    features = []
+    for year in TIME_SERIES_YEARS:
+        ndvi = get_ndvi(region, year, season=season)
+        stats = ndvi.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=scale,
+            bestEffort=True,
+            maxPixels=1e9,
+        )
+        features.append(ee.Feature(None, {"year": year, "ndvi": stats.get("nd")}))
+    info = ee.FeatureCollection(features).getInfo()
+    pts = [
+        {"year": int(f["properties"]["year"]), "ndvi": round(float(f["properties"]["ndvi"]), 4)}
+        for f in info["features"]
+        if f["properties"].get("ndvi") is not None
+    ]
+    return sorted(pts, key=lambda x: x["year"])
 
 
 def compute_phase1(bbox_str: str, year_before: int, year_after: int, season: str = "jun-sep"):
@@ -88,134 +123,144 @@ def compute_phase1(bbox_str: str, year_before: int, year_after: int, season: str
     region = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
     scale = choose_scale(min_lon, min_lat, max_lon, max_lat)
 
-    # NDVI images
-    ndvi_before = get_ndvi(region, year_before, cloud_pct=60, season=season)
-    ndvi_after = get_ndvi(region, year_after, cloud_pct=60, season=season)
-
-    # NDVI diff
+    # NDVI imagery (for visualization)
+    ndvi_before = get_ndvi(region, year_before, season=season).clip(region)
+    ndvi_after = get_ndvi(region, year_after, season=season).clip(region)
     ndvi_diff = ndvi_after.subtract(ndvi_before)
 
-    # Forest masks (NDVI proxy)
-    threshold = 0.3
-    forest_before = ndvi_before.gt(threshold)
-    forest_after = ndvi_after.gt(threshold)
+    # Forest masks — Hansen (accurate) for 2000–2023, NDVI proxy otherwise
+    use_hansen = YEAR_MIN <= year_before <= 2023 and YEAR_MIN <= year_after <= 2023
+    if use_hansen:
+        forest_before = get_forest_mask_hansen(year_before).clip(region)
+        forest_after = get_forest_mask_hansen(year_after).clip(region)
+    else:
+        forest_before = ndvi_before.gt(0.3)
+        forest_after = ndvi_after.gt(0.3)
+
     lost_forest = forest_before.And(forest_after.Not())
 
-    # Clip overlays to the bbox so they don't show as giant squares
-    ndvi_before_c = ndvi_before.clip(region)
-    ndvi_after_c = ndvi_after.clip(region)
-    ndvi_diff_c = ndvi_diff.clip(region)
-    lost_forest_c = lost_forest.clip(region)
-
-    # ---- Phase 1 metrics (km²) ----
-    forest_before_km2 = area_km2(forest_before, region, scale)
-    forest_after_km2 = area_km2(forest_after, region, scale)
-    loss_km2 = area_km2(lost_forest, region, scale)
-
-    # Bring back to Python
-    fb = float(forest_before_km2.getInfo() or 0.0)
-    fa = float(forest_after_km2.getInfo() or 0.0)
-    lk = float(loss_km2.getInfo() or 0.0)
-
-    loss_percent = None
-    if fb > 0:
-        loss_percent = (lk / fb) * 100.0
-
-    # ---- Tile URLs ----
-    diff_vis = {"min": -0.5, "max": 0.5, "palette": ["red", "white", "green"]}
-    ndvi_vis = {"min": 0.0, "max": 1.0, "palette": ["brown", "yellow", "green"]}
-    lost_vis = {"min": 0, "max": 1, "palette": ["00000000", "ff0000"]}  # transparent -> red
+    # All three areas in one GEE call
+    areas = area_km2_batch(
+        {"forest_before": forest_before, "forest_after": forest_after, "lost_forest": lost_forest},
+        region, scale,
+    )
+    fb, fa, lk = areas["forest_before"], areas["forest_after"], areas["lost_forest"]
 
     tile_urls = {
-        "diff": ee.Image(ndvi_diff_c).getMapId(diff_vis)["tile_fetcher"].url_format,
-        "before": ee.Image(ndvi_before_c).getMapId(ndvi_vis)["tile_fetcher"].url_format,
-        "after": ee.Image(ndvi_after_c).getMapId(ndvi_vis)["tile_fetcher"].url_format,
-        "lost": ee.Image(lost_forest_c).getMapId(lost_vis)["tile_fetcher"].url_format,
+        "diff": ee.Image(ndvi_diff).getMapId(
+            {"min": -0.5, "max": 0.5, "palette": ["red", "white", "green"]}
+        )["tile_fetcher"].url_format,
+        "before": ee.Image(ndvi_before).getMapId(
+            {"min": 0.0, "max": 1.0, "palette": ["brown", "yellow", "green"]}
+        )["tile_fetcher"].url_format,
+        "after": ee.Image(ndvi_after).getMapId(
+            {"min": 0.0, "max": 1.0, "palette": ["brown", "yellow", "green"]}
+        )["tile_fetcher"].url_format,
+        "lost": ee.Image(lost_forest).getMapId(
+            {"min": 0, "max": 1, "palette": ["00000000", "ff0000"]}
+        )["tile_fetcher"].url_format,
     }
 
     metrics = {
         "forest_before_km2": fb,
         "forest_after_km2": fa,
         "loss_km2": lk,
-        "loss_percent": loss_percent,
+        "loss_percent": (lk / fb * 100.0) if fb > 0 else None,
         "used_scale": scale,
+        "used_hansen": use_hansen,
     }
 
-    return metrics, tile_urls
+    time_series = compute_time_series(region, scale, season)
+    return metrics, tile_urls, time_series
 
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     default_center = {"lat": -9.25, "lon": -59.25, "zoom": 10}
     default_bbox = "-59.5,-9.5,-59.0,-9.0"
+    ctx = dict(center=default_center, metrics=None, tile_urls=None, time_series=None, error=None)
 
     if request.method == "POST":
         bbox = request.form.get("bbox", "").strip()
         yb = int(request.form.get("year_before", "2018"))
         ya = int(request.form.get("year_after", "2023"))
         season = request.form.get("season", "jun-sep")
+        ctx.update(bbox=bbox or default_bbox, year_before=yb, year_after=ya, season=season)
 
         if not bbox:
-            return render_template(
-                "index.html",
-                center=default_center,
-                bbox=default_bbox,
-                year_before=yb,
-                year_after=ya,
-                season=season,
-                metrics=None,
-                tile_urls=None,
-                error="Draw a rectangle first (bbox is empty).",
-            )
+            ctx["error"] = "Draw a rectangle first (bbox is empty)."
+            return render_template("index.html", **ctx)
+
+        if not (YEAR_MIN <= yb <= YEAR_MAX and YEAR_MIN <= ya <= YEAR_MAX):
+            ctx["error"] = f"Years must be between {YEAR_MIN} and {YEAR_MAX}."
+            return render_template("index.html", **ctx)
+
+        if ya <= yb:
+            ctx["error"] = "After year must be greater than before year."
+            return render_template("index.html", **ctx)
 
         key = (bbox, yb, ya, season)
         try:
-            if key in CACHE:
-                metrics, tile_urls = CACHE[key]
+            cached = cache_get(key)
+            if cached:
+                metrics, tile_urls, time_series = cached
             else:
-                metrics, tile_urls = compute_phase1(bbox, yb, ya, season)
-                CACHE[key] = (metrics, tile_urls)
+                metrics, tile_urls, time_series = compute_phase1(bbox, yb, ya, season)
+                cache_set(key, (metrics, tile_urls, time_series))
         except Exception as e:
-            return render_template(
-                "index.html",
-                center=default_center,
-                bbox=bbox or default_bbox,
-                year_before=yb,
-                year_after=ya,
-                season=season,
-                metrics=None,
-                tile_urls=None,
-                error=f"Could not analyze that area: {e}",
-            )
+            ctx["error"] = f"Could not analyze that area: {e}"
+            return render_template("index.html", **ctx)
 
-        
-        error = None
         if metrics["forest_before_km2"] == 0 and metrics["forest_after_km2"] == 0:
-            error = "No valid pixels found (clouds/no data). Try a smaller area, different season, or different years."
+            ctx["error"] = "No valid pixels found (clouds/no data). Try a smaller area, different season, or different years."
 
-        return render_template(
-            "index.html",
-            center=default_center,
-            bbox=bbox,
-            year_before=yb,
-            year_after=ya,
-            season=season,
-            metrics=metrics,
-            tile_urls=tile_urls,
-            error=error,
-        )
+        ctx.update(bbox=bbox, metrics=metrics, tile_urls=tile_urls, time_series=time_series)
+        return render_template("index.html", **ctx)
 
-    # GET
-    return render_template(
-        "index.html",
-        center=default_center,
-        bbox=default_bbox,
-        year_before=2018,
-        year_after=2023,
-        season="jun-sep",
-        metrics=None,
-        tile_urls=None,
-        error=None,
+    ctx.update(bbox=default_bbox, year_before=2018, year_after=2023, season="jun-sep")
+    return render_template("index.html", **ctx)
+
+
+@app.route("/export.csv")
+def export_csv():
+    bbox = request.args.get("bbox", "")
+    season = request.args.get("season", "jun-sep")
+    try:
+        yb = int(request.args.get("year_before", "2018"))
+        ya = int(request.args.get("year_after", "2023"))
+    except ValueError:
+        return "Invalid year parameters.", 400
+
+    cached = cache_get((bbox, yb, ya, season))
+    if not cached:
+        return "No cached results. Run the analysis first.", 404
+
+    metrics, _, time_series = cached
+
+    output = io.StringIO()
+    w = csv.writer(output)
+    w.writerow(["bbox", bbox])
+    w.writerow(["year_before", yb])
+    w.writerow(["year_after", ya])
+    w.writerow(["season", season])
+    w.writerow([])
+    w.writerow(["metric", "value"])
+    w.writerow(["forest_before_km2", f"{metrics['forest_before_km2']:.4f}"])
+    w.writerow(["forest_after_km2", f"{metrics['forest_after_km2']:.4f}"])
+    w.writerow(["loss_km2", f"{metrics['loss_km2']:.4f}"])
+    lp = metrics["loss_percent"]
+    w.writerow(["loss_percent", f"{lp:.4f}" if lp is not None else "N/A"])
+    w.writerow(["scale_m", metrics["used_scale"]])
+    w.writerow(["method", "Hansen GFC" if metrics.get("used_hansen") else "NDVI threshold"])
+    w.writerow([])
+    w.writerow(["year", "mean_ndvi"])
+    for pt in time_series:
+        w.writerow([pt["year"], pt["ndvi"]])
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=forest_analysis_{yb}_{ya}.csv"},
     )
 
 

@@ -7,60 +7,206 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
 
-  <style>
-    body { font-family: system-ui, -apple-system, sans-serif; margin: 20px; }
-    #map { height: 520px; border-radius: 12px; overflow: hidden; }
-    .row { display: flex; gap: 16px; align-items: end; flex-wrap: wrap; margin: 12px 0; }
-    input, select { padding: 8px; width: 240px; }
-    button { padding: 10px 14px; cursor: pointer; }
-    .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #f2f2f2; }
-    .err { background:#ffe5e5; padding:10px; border-radius:10px; margin:10px 0; }
-    .muted { color: #555; font-size: 13px; max-width: 980px; }
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
 
-   
+  <style>
+    :root {
+      --green:       #2d6a4f;
+      --green-light: #d8f3dc;
+      --green-mid:   #52b788;
+      --red:         #c0392b;
+      --red-light:   #fde8e6;
+      --orange:      #e07b39;
+      --orange-light:#fff0e0;
+      --bg:          #f4faf5;
+      --card:        #ffffff;
+      --border:      #c8e6c9;
+      --text:        #1b2e23;
+      --muted:       #5a7a65;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Nunito', system-ui, sans-serif;
+      margin: 0;
+      padding: 24px 28px;
+      max-width: 1100px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--green);
+      margin: 0 0 18px;
+      letter-spacing: -0.3px;
+    }
+
+    #map { height: 520px; border-radius: 16px; overflow: hidden; border: 2px solid var(--border); }
+
+    .row { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; margin: 14px 0; }
+
+    .field-label { font-size: 13px; font-weight: 700; color: var(--green); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+    input[type=text], input[type=number], select {
+      padding: 9px 12px;
+      width: 200px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type=text]:focus, input[type=number]:focus, select:focus { border-color: var(--green-mid); }
+
+    button#analyzeBtn {
+      padding: 10px 20px;
+      cursor: pointer;
+      border: none;
+      border-radius: 10px;
+      background: var(--green);
+      color: white;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      transition: background 0.15s, transform 0.1s;
+    }
+    button#analyzeBtn:hover { background: #245c43; }
+    button#analyzeBtn:active { transform: scale(0.97); }
+    button#analyzeBtn:disabled { background: #aaa; cursor: not-allowed; }
+
+    .btn {
+      padding: 10px 16px;
+      cursor: pointer;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--green);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-block;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: var(--green-light); }
+
+    .pill {
+      display: inline-block;
+      padding: 7px 14px;
+      border-radius: 999px;
+      background: var(--green-light);
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 600;
+      border: 1.5px solid var(--border);
+    }
+    .pill-red { background: var(--red-light); color: var(--red); border-color: #f5c6c2; }
+
+    .err {
+      background: var(--red-light);
+      color: var(--red);
+      padding: 12px 16px;
+      border-radius: 12px;
+      margin: 10px 0;
+      font-weight: 600;
+      border: 1.5px solid #f5c6c2;
+    }
+
+    .muted { color: var(--muted); font-size: 13px; }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--green-light);
+      color: var(--green);
+      border: 1.5px solid var(--border);
+    }
+    .badge-warn { background: var(--orange-light); color: var(--orange); border-color: #f5d5b5; }
+
+    /* Opacity sliders */
+    .opacity-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 12px;
+      background: var(--card);
+      padding: 14px 18px;
+      border-radius: 14px;
+      border: 2px solid var(--border);
+      margin: 8px 0;
+    }
+    .opacity-item .field-label { margin-bottom: 4px; }
+    .opacity-item input[type=range] { width: 100%; cursor: pointer; accent-color: var(--green-mid); }
+
+    /* Loading overlay */
     #loadingOverlay {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.35);
+      background: rgba(27, 46, 35, 0.5);
       display: none;
       align-items: center;
       justify-content: center;
       z-index: 9999;
     }
     #loadingBox {
-      background: white;
-      padding: 18px 20px;
-      border-radius: 14px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      min-width: 280px;
+      background: var(--card);
+      padding: 24px 28px;
+      border-radius: 18px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+      min-width: 300px;
+      border: 2px solid var(--border);
     }
+    .spinner-row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+    .spinner-row b { font-size: 16px; color: var(--green); }
     .spinner {
-      width: 22px;
-      height: 22px;
-      border: 3px solid #ddd;
-      border-top-color: #333;
+      width: 24px; height: 24px;
+      border: 3px solid var(--green-light);
+      border-top-color: var(--green-mid);
       border-radius: 50%;
-      animation: spin 0.9s linear infinite;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .step-list { font-size: 13px; color: #aaa; margin-top: 4px; }
+    .step-list span { display: block; padding: 3px 0; }
+    .step-list span.active { color: var(--text); font-weight: 700; }
+    .step-list span.done { color: var(--green-mid); font-weight: 600; }
+    .step-list span.done::before { content: "✓ "; }
 
-    
+    /* Legend */
     .legend {
-      font-size: 14px;
+      font-size: 13px;
+      font-family: 'Nunito', sans-serif;
+      font-weight: 600;
       background: white;
-      padding: 10px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-      line-height: 18px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+      line-height: 22px;
     }
+
+    /* Chart */
+    #chartContainer {
+      margin-top: 20px;
+      padding: 18px 22px;
+      background: var(--card);
+      border-radius: 16px;
+      border: 2px solid var(--border);
+    }
+    #chartContainer h3 { margin: 0 0 14px; font-size: 16px; font-weight: 800; color: var(--green); }
   </style>
 </head>
 
 <body>
-  <h1>Deforestation Analyzer</h1>
+  <h1>🌳 Deforestation Analyzer</h1>
 
   {% if error %}
     <div class="err"><b>Error:</b> {{ error }}</div>
@@ -68,102 +214,171 @@
 
   <div class="row">
     <div>
-      <div><b>Before year</b></div>
-      <input type="number" id="year_before" value="{{ year_before }}" />
+      <div class="field-label">Before year</div>
+      <input type="number" id="year_before" value="{{ year_before }}" min="2000" max="2024" />
     </div>
-
     <div>
-      <div><b>After year</b></div>
-      <input type="number" id="year_after" value="{{ year_after }}" />
+      <div class="field-label">After year</div>
+      <input type="number" id="year_after" value="{{ year_after }}" min="2000" max="2024" />
     </div>
-
     <div>
-      <div><b>Season (speed)</b></div>
+      <div class="field-label">Season</div>
       <select id="season">
         <option value="jun-sep" {% if season == "jun-sep" %}selected{% endif %}>Jun–Sep (fast)</option>
-        <option value="all" {% if season == "all" %}selected{% endif %}>All year (slower)</option>
+        <option value="all"     {% if season == "all"     %}selected{% endif %}>All year (slower)</option>
       </select>
     </div>
-
     <div>
-      <div><b>Bounding box</b></div>
+      <div class="field-label">Bounding box</div>
       <input type="text" id="bbox_display" value="{{ bbox }}" readonly />
     </div>
-
     <form method="post" id="analyzeForm">
-      <input type="hidden" name="bbox" id="bbox" value="{{ bbox }}" />
-      <input type="hidden" name="year_before" id="yb_hidden" value="{{ year_before }}" />
-      <input type="hidden" name="year_after" id="ya_hidden" value="{{ year_after }}" />
-      <input type="hidden" name="season" id="season_hidden" value="{{ season }}" />
-      <button type="submit" id="analyzeBtn">Analyze</button>
+      <input type="hidden" name="bbox"        id="bbox"         value="{{ bbox }}" />
+      <input type="hidden" name="year_before" id="yb_hidden"    value="{{ year_before }}" />
+      <input type="hidden" name="year_after"  id="ya_hidden"    value="{{ year_after }}" />
+      <input type="hidden" name="season"      id="season_hidden" value="{{ season }}" />
+      <button type="submit" id="analyzeBtn">🔍 Analyze</button>
     </form>
+    {% if tile_urls %}
+      <a class="btn" href="/export.csv?bbox={{ bbox }}&year_before={{ year_before }}&year_after={{ year_after }}&season={{ season }}">
+        📥 Export CSV
+      </a>
+    {% endif %}
   </div>
 
   {% if metrics %}
     <div class="row">
-      <span class="pill"><b>Forest before:</b> {{ "%.2f"|format(metrics.forest_before_km2) }} km²</span>
-      <span class="pill"><b>Forest after:</b> {{ "%.2f"|format(metrics.forest_after_km2) }} km²</span>
-      <span class="pill"><b>Loss:</b> {{ "%.2f"|format(metrics.loss_km2) }} km²</span>
+      <span class="pill"><b>Forest {{ year_before }}:</b> {{ "%.2f"|format(metrics.forest_before_km2) }} km²</span>
+      <span class="pill"><b>Forest {{ year_after }}:</b> {{ "%.2f"|format(metrics.forest_after_km2) }} km²</span>
+      <span class="pill {% if metrics.loss_km2 > 0 %}pill-red{% endif %}">
+        <b>Loss:</b> {{ "%.2f"|format(metrics.loss_km2) }} km²
+      </span>
       {% if metrics.loss_percent is not none %}
-        <span class="pill"><b>Loss %:</b> {{ "%.2f"|format(metrics.loss_percent) }}%</span>
+        <span class="pill {% if metrics.loss_percent > 5 %}pill-red{% endif %}">
+          <b>Loss %:</b> {{ "%.2f"|format(metrics.loss_percent) }}%
+        </span>
       {% else %}
         <span class="pill"><b>Loss %:</b> N/A</span>
       {% endif %}
       <span class="pill"><b>Scale:</b> {{ metrics.used_scale }} m</span>
+      {% if metrics.used_hansen %}
+        <span class="badge">Hansen GFC</span>
+      {% else %}
+        <span class="badge badge-warn">NDVI proxy</span>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if tile_urls %}
+    <div class="opacity-grid">
+      <div class="opacity-item">
+        <label>Change opacity: <span id="opChangeVal">85%</span></label>
+        <input type="range" id="opChange" min="0" max="1" step="0.05" value="0.85" />
+      </div>
+      <div class="opacity-item">
+        <label>Before ({{ year_before }}) opacity: <span id="opBeforeVal">75%</span></label>
+        <input type="range" id="opBefore" min="0" max="1" step="0.05" value="0.75" />
+      </div>
+      <div class="opacity-item">
+        <label>After ({{ year_after }}) opacity: <span id="opAfterVal">75%</span></label>
+        <input type="range" id="opAfter" min="0" max="1" step="0.05" value="0.75" />
+      </div>
+      <div class="opacity-item">
+        <label>Lost forest opacity: <span id="opLostVal">90%</span></label>
+        <input type="range" id="opLost" min="0" max="1" step="0.05" value="0.90" />
+      </div>
     </div>
   {% endif %}
 
   <p class="muted">
-    <b>Notes:</b> NDVI is a vegetation proxy. Results can be affected by seasonality, clouds, land cover type,
-    and the chosen years. Smaller rectangles are faster and usually more reliable.
+    <b>Notes:</b> NDVI is a vegetation proxy. Results can be affected by seasonality, clouds, and land cover.
+    Hansen GFC uses actual tree-cover data (30% canopy threshold, 2000–2023). Smaller rectangles are faster and more reliable.
   </p>
 
   <div id="map"></div>
 
-  
+  {% if time_series %}
+    <div id="chartContainer">
+      <h3>Mean NDVI over time ({{ time_series[0].year }}–{{ time_series[-1].year }})</h3>
+      <canvas id="ndviChart"></canvas>
+    </div>
+  {% endif %}
+
+  <!-- Loading overlay -->
   <div id="loadingOverlay">
     <div id="loadingBox">
-      <div class="spinner"></div>
-      <div>
-        <div><b>Sorry it takes a little time :)…</b></div>
-        <div class="muted">This can take a few seconds.</div>
+      <div class="spinner-row">
+        <div class="spinner"></div>
+        <b>Analyzing...</b>
+      </div>
+      <div class="step-list">
+        <span id="step0" class="active">Fetching satellite imagery</span>
+        <span id="step1">Computing NDVI composites</span>
+        <span id="step2">Analyzing forest cover</span>
+        <span id="step3">Building NDVI time series</span>
+        <span id="step4">Generating map tiles</span>
       </div>
     </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- All server-side data in one place so the main script is pure JS -->
+  <script id="app-data" type="application/json">
+    {
+      "center":     {{ center | tojson }},
+      "bbox":       {{ bbox | tojson }},
+      "yearBefore": {{ year_before }},
+      "yearAfter":  {{ year_after }},
+      "tileUrls":   {{ tile_urls | tojson if tile_urls else 'null' }},
+      "timeSeries": {{ time_series | tojson if time_series else 'null' }}
+    }
+  </script>
 
 <script>
 (() => {
-  
-  const center = {{ center | tojson }};
-
-  const map = L.map("map").setView([center.lat, center.lon], center.zoom);
+  const APP = JSON.parse(document.getElementById("app-data").textContent);
+  const map = L.map("map").setView([APP.center.lat, APP.center.lon], APP.center.zoom);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap"
   }).addTo(map);
 
-  
   const overlayLayers = {};
+  let ndviDiff, ndviBefore, ndviAfter, lostForest;
 
-  {% if tile_urls %}
-    const ndviDiff = L.tileLayer("{{ tile_urls.diff }}", { opacity: 0.85, attribution: "Google Earth Engine" });
-    const ndviBefore = L.tileLayer("{{ tile_urls.before }}", { opacity: 0.75, attribution: "Google Earth Engine" });
-    const ndviAfter = L.tileLayer("{{ tile_urls.after }}", { opacity: 0.75, attribution: "Google Earth Engine" });
-    const lostForest = L.tileLayer("{{ tile_urls.lost }}", { opacity: 0.90, attribution: "Google Earth Engine" });
+  if (APP.tileUrls) {
+    ndviDiff   = L.tileLayer(APP.tileUrls.diff,   { opacity: 0.85, attribution: "Google Earth Engine" });
+    ndviBefore = L.tileLayer(APP.tileUrls.before,  { opacity: 0.75, attribution: "Google Earth Engine" });
+    ndviAfter  = L.tileLayer(APP.tileUrls.after,   { opacity: 0.75, attribution: "Google Earth Engine" });
+    lostForest = L.tileLayer(APP.tileUrls.lost,    { opacity: 0.90, attribution: "Google Earth Engine" });
 
     ndviDiff.addTo(map);
 
-    overlayLayers["Change (After - Before)"] = ndviDiff;
-    overlayLayers["Before ({{ year_before }})"] = ndviBefore;
-    overlayLayers["After ({{ year_after }})"] = ndviAfter;
-    overlayLayers["Lost Forest (mask)"] = lostForest;
+    overlayLayers[`Change (After \u2212 Before)`]       = ndviDiff;
+    overlayLayers[`Before (${APP.yearBefore})`]         = ndviBefore;
+    overlayLayers[`After (${APP.yearAfter})`]           = ndviAfter;
+    overlayLayers["Lost Forest"]                        = lostForest;
 
     L.control.layers(null, overlayLayers, { collapsed: false }).addTo(map);
-  {% endif %}
+
+    // Opacity sliders
+    function bindSlider(sliderId, valId, layer) {
+      const slider = document.getElementById(sliderId);
+      const valEl  = document.getElementById(valId);
+      slider.addEventListener("input", () => {
+        layer.setOpacity(+slider.value);
+        valEl.textContent = Math.round(slider.value * 100) + "%";
+      });
+    }
+    bindSlider("opChange", "opChangeVal", ndviDiff);
+    bindSlider("opBefore", "opBeforeVal", ndviBefore);
+    bindSlider("opAfter",  "opAfterVal",  ndviAfter);
+    bindSlider("opLost",   "opLostVal",   lostForest);
+  }
 
   // Draw rectangle support
   const drawnItems = new L.FeatureGroup();
@@ -180,80 +395,150 @@
   map.addControl(drawControl);
 
   function setBBoxFromBounds(bounds) {
-    const west = bounds.getWest().toFixed(6);
-    const south = bounds.getSouth().toFixed(6);
-    const east = bounds.getEast().toFixed(6);
-    const north = bounds.getNorth().toFixed(6);
-    const bboxStr = `${west},${south},${east},${north}`;
+    const bboxStr = [
+      bounds.getWest().toFixed(6), bounds.getSouth().toFixed(6),
+      bounds.getEast().toFixed(6), bounds.getNorth().toFixed(6)
+    ].join(",");
     document.getElementById("bbox").value = bboxStr;
     document.getElementById("bbox_display").value = bboxStr;
   }
 
-  
+  // Restore previous bbox and auto-zoom to it
   const initialBBox = "{{ bbox }}";
   if (initialBBox && initialBBox.includes(",")) {
     const parts = initialBBox.split(",").map(Number);
     if (parts.length === 4 && parts.every(Number.isFinite)) {
       const [minLon, minLat, maxLon, maxLat] = parts;
       const rectBounds = L.latLngBounds([minLat, minLon], [maxLat, maxLon]);
-      const rect = L.rectangle(rectBounds);
-      drawnItems.addLayer(rect);
-      map.fitBounds(rectBounds);
+      drawnItems.addLayer(L.rectangle(rectBounds));
+      map.fitBounds(rectBounds, { padding: [20, 20] });
       setBBoxFromBounds(rectBounds);
     }
   }
 
-  map.on(L.Draw.Event.CREATED, function (event) {
+  map.on(L.Draw.Event.CREATED, (event) => {
     drawnItems.clearLayers();
-    const layer = event.layer;
-    drawnItems.addLayer(layer);
-    setBBoxFromBounds(layer.getBounds());
+    drawnItems.addLayer(event.layer);
+    setBBoxFromBounds(event.layer.getBounds());
   });
 
-  map.on(L.Draw.Event.EDITED, function (event) {
-    event.layers.eachLayer(function (layer) {
+  map.on(L.Draw.Event.EDITED, (event) => {
+    event.layers.eachLayer((layer) => {
       if (layer.getBounds) setBBoxFromBounds(layer.getBounds());
     });
   });
 
-  
+  // Sync hidden form fields
   function syncFormFields() {
-    document.getElementById("yb_hidden").value = document.getElementById("year_before").value;
-    document.getElementById("ya_hidden").value = document.getElementById("year_after").value;
-    document.getElementById("season_hidden").value = document.getElementById("season").value;
+    document.getElementById("yb_hidden").value      = document.getElementById("year_before").value;
+    document.getElementById("ya_hidden").value      = document.getElementById("year_after").value;
+    document.getElementById("season_hidden").value  = document.getElementById("season").value;
   }
   document.getElementById("year_before").addEventListener("input", syncFormFields);
   document.getElementById("year_after").addEventListener("input", syncFormFields);
   document.getElementById("season").addEventListener("change", syncFormFields);
   syncFormFields();
 
-  // Loading overlay + prevent empty bbox
+  // Form submit: validate years + show loading overlay
   const overlay = document.getElementById("loadingOverlay");
-  document.getElementById("analyzeForm").addEventListener("submit", function (e) {
-    const bboxVal = document.getElementById("bbox").value.trim();
-    if (!bboxVal) {
+  document.getElementById("analyzeForm").addEventListener("submit", (e) => {
+    const bbox = document.getElementById("bbox").value.trim();
+    const yb   = parseInt(document.getElementById("year_before").value, 10);
+    const ya   = parseInt(document.getElementById("year_after").value, 10);
+
+    if (!bbox) {
       e.preventDefault();
-      alert("Draw a rectangle on the map first (bbox is empty).");
+      alert("Draw a rectangle on the map first.");
       return;
     }
+    if (isNaN(yb) || isNaN(ya) || yb < 2000 || ya > 2024) {
+      e.preventDefault();
+      alert("Years must be between 2000 and 2024.");
+      return;
+    }
+    if (ya <= yb) {
+      e.preventDefault();
+      alert("After year must be greater than before year.");
+      return;
+    }
+
     syncFormFields();
     overlay.style.display = "flex";
     document.getElementById("analyzeBtn").disabled = true;
+
+    // Animate through loading steps
+    const steps = document.querySelectorAll(".step-list span");
+    let idx = 0;
+    const timer = setInterval(() => {
+      if (idx < steps.length - 1) {
+        steps[idx].classList.remove("active");
+        steps[idx].classList.add("done");
+        idx++;
+        steps[idx].classList.add("active");
+      } else {
+        clearInterval(timer);
+      }
+    }, 3500);
   });
 
-  
+  // Legend
   const legend = L.control({ position: "bottomright" });
-  legend.onAdd = function () {
+  legend.onAdd = () => {
     const div = L.DomUtil.create("div", "legend");
     div.innerHTML = `
       <div style="font-weight:700;margin-bottom:6px;">NDVI Change</div>
-      <div><span style="display:inline-block;width:14px;height:14px;background:red;margin-right:6px;"></span> Vegetation loss</div>
-      <div><span style="display:inline-block;width:14px;height:14px;background:white;border:1px solid #ccc;margin-right:6px;"></span> No change</div>
-      <div><span style="display:inline-block;width:14px;height:14px;background:green;margin-right:6px;"></span> Vegetation gain</div>
+      <div><span style="display:inline-block;width:14px;height:14px;background:red;margin-right:6px;border-radius:2px;"></span>Vegetation loss</div>
+      <div><span style="display:inline-block;width:14px;height:14px;background:white;border:1px solid #ccc;margin-right:6px;border-radius:2px;"></span>No change</div>
+      <div><span style="display:inline-block;width:14px;height:14px;background:green;margin-right:6px;border-radius:2px;"></span>Vegetation gain</div>
     `;
     return div;
   };
   legend.addTo(map);
+
+  // Time series chart
+  if (APP.timeSeries && APP.timeSeries.length) {
+    const labels   = APP.timeSeries.map(d => d.year);
+    const values   = APP.timeSeries.map(d => d.ndvi);
+    const ptColors = labels.map(y => y === APP.yearBefore ? "#1565C0" : y === APP.yearAfter ? "#B71C1C" : "rgba(34,139,34,0.7)");
+    const ptRadii  = labels.map(y => (y === APP.yearBefore || y === APP.yearAfter) ? 7 : 4);
+
+    new Chart(document.getElementById("ndviChart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "Mean NDVI",
+          data: values,
+          borderColor: "rgba(34,139,34,0.8)",
+          backgroundColor: "rgba(34,139,34,0.08)",
+          pointBackgroundColor: ptColors,
+          pointRadius: ptRadii,
+          tension: 0.3,
+          fill: true,
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: { min: 0, max: 1, title: { display: true, text: "Mean NDVI" } },
+          x: { title: { display: true, text: "Year" } }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const y = labels[ctx.dataIndex];
+                const tag = y === APP.yearBefore ? " (before)" : y === APP.yearAfter ? " (after)" : "";
+                return `NDVI: ${ctx.parsed.y.toFixed(4)}${tag}`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
 })();
 </script>
 

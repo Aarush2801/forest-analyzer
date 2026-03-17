@@ -13,20 +13,24 @@ import ee
 GEE_PROJECT = os.environ.get("GEE_PROJECT", "studious-karma-482808-m2")
 
 _gee_initialized = False
+_gee_error = None
 
 def init_gee():
-    global _gee_initialized
+    global _gee_initialized, _gee_error
     if _gee_initialized:
         return
-    key_json = os.environ.get("GEE_SERVICE_ACCOUNT_KEY")
-    if key_json:
-        import json as _json
-        key_data = _json.loads(key_json)
-        credentials = ee.ServiceAccountCredentials(key_data["client_email"], key_data=key_json)
-        ee.Initialize(credentials, project=GEE_PROJECT)
-    else:
-        ee.Initialize(project=GEE_PROJECT)
-    _gee_initialized = True
+    try:
+        key_json = os.environ.get("GEE_SERVICE_ACCOUNT_KEY")
+        if key_json:
+            key_data = json.loads(key_json)
+            credentials = ee.ServiceAccountCredentials(key_data["client_email"], key_data=key_json)
+            ee.Initialize(credentials, project=GEE_PROJECT)
+        else:
+            ee.Initialize(project=GEE_PROJECT)
+        _gee_initialized = True
+        _gee_error = None
+    except Exception as e:
+        _gee_error = str(e)
 
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
@@ -248,7 +252,8 @@ def index():
     init_gee()
     default_center = {"lat": -9.25, "lon": -59.25, "zoom": 10}
     default_bbox = "-59.5,-9.5,-59.0,-9.0"
-    ctx = dict(center=default_center, metrics=None, tile_urls=None, time_series=None, error=None, news=fetch_news())
+    gee_err = f"GEE init failed: {_gee_error}" if _gee_error else None
+    ctx = dict(center=default_center, metrics=None, tile_urls=None, time_series=None, error=gee_err, news=fetch_news())
 
     if request.method == "POST":
         bbox = request.form.get("bbox", "").strip()
@@ -289,6 +294,17 @@ def index():
 
     ctx.update(bbox=default_bbox, year_before=2018, year_after=2023, season="jun-sep")
     return render_template("index.html", **ctx)
+
+
+@app.route("/debug")
+def debug():
+    init_gee()
+    return {
+        "gee_initialized": _gee_initialized,
+        "gee_error": _gee_error,
+        "has_key_env": bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY")),
+        "gee_project": GEE_PROJECT,
+    }
 
 
 @app.route("/export.csv")

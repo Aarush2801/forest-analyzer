@@ -1,5 +1,4 @@
 import os
-import shelve
 import json
 import io
 import csv
@@ -12,12 +11,26 @@ from flask import Flask, render_template, request, Response
 import ee
 
 GEE_PROJECT = os.environ.get("GEE_PROJECT", "studious-karma-482808-m2")
-ee.Initialize(project=GEE_PROJECT)
+
+_gee_initialized = False
+
+def init_gee():
+    global _gee_initialized
+    if _gee_initialized:
+        return
+    key_json = os.environ.get("GEE_SERVICE_ACCOUNT_KEY")
+    if key_json:
+        import json as _json
+        key_data = _json.loads(key_json)
+        credentials = ee.ServiceAccountCredentials(key_data["client_email"], key_data=key_json)
+        ee.Initialize(credentials, project=GEE_PROJECT)
+    else:
+        ee.Initialize(project=GEE_PROJECT)
+    _gee_initialized = True
 
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
-CACHE_FILE = "gee_cache"
 YEAR_MIN, YEAR_MAX = 2000, 2024
 TIME_SERIES_YEARS = list(range(2017, 2025))
 
@@ -67,14 +80,14 @@ def fetch_news(max_per_feed: int = 6) -> list:
     return items
 
 
+_mem_cache = {}
+
 def cache_get(key_tuple):
-    with shelve.open(CACHE_FILE) as db:
-        return db.get(json.dumps(list(key_tuple)))
+    return _mem_cache.get(json.dumps(list(key_tuple)))
 
 
 def cache_set(key_tuple, value):
-    with shelve.open(CACHE_FILE) as db:
-        db[json.dumps(list(key_tuple))] = value
+    _mem_cache[json.dumps(list(key_tuple))] = value
 
 
 def parse_bbox(bbox_str: str):
@@ -232,6 +245,7 @@ def compute_phase1(bbox_str: str, year_before: int, year_after: int, season: str
 
 @app.route("/", methods=["GET", "POST"])
 def index():
+    init_gee()
     default_center = {"lat": -9.25, "lon": -59.25, "zoom": 10}
     default_bbox = "-59.5,-9.5,-59.0,-9.0"
     ctx = dict(center=default_center, metrics=None, tile_urls=None, time_series=None, error=None, news=fetch_news())

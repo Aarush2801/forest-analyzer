@@ -1,3 +1,4 @@
 Flask
 earthengine-api
+gunicorn
 
